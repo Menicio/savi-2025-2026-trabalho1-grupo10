@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 # SAVI - Trabalho 1
-# Tarefa 1
+# Tarefa 1 - Reisto ICP com as Ferramentas Nativas do Open3D
 # João Menício - 93300
-
-# Dúvidas:
-# como importar os parâmetros intrinsecos da câmara?
-# -> Por defeito uso PrimeSenseDefault. Se quiseres TUM fr1:
-#    intr = o3d.camera.PinholeCameraIntrinsic(
-#        width, height, 517.3, 516.5, 318.6, 255.3
-#    )
-#    e depois usa esse 'intr' em create_from_rgbd_image.
+# Pascoal Sumbo - 123190
 
 from copy import deepcopy
 from functools import partial
@@ -23,10 +16,10 @@ import open3d as o3d
 # ==========================
 # PARÂMETROS EDITÁVEIS
 # ==========================
-VOXEL_SIZE = 0.025              # mantém coerente com a cena
-MAX_CORR_DIST = 0.6            # max_correspondence_distance (m) ~ 1.0–2.0 * VOXEL_SIZE
+VOXEL_SIZE = 0.025              # Tamanho da zona do voxel para downsampling
+MAX_CORR_DIST = 0.6             # max_correspondence_distance,   distância máxima para aceitar correspondências
 ICP_METHOD = "point_to_plane"   # "point_to_plane" ou "point_to_point"
-MAX_ITERS = 2400                  # iterações máximas do ICP
+MAX_ITERS = 2400                # iterações máximas do ICP
 # ==========================
 
 
@@ -50,23 +43,21 @@ def main():
     filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
     depth2 = o3d.io.read_image(filename_depth2)
 
-    # Convert do RGB-D (TUM: esta função já trata da escala/encoding)
+    # Convert do RGB-D
     rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
     rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
 
-    # Criar pointclouds (intrínsecos: PrimeSenseDefault)
+    # Criar pointclouds
     intr = o3d.camera.PinholeCameraIntrinsic(
-        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
-    )
-    # Se quiseres TUM fr1 explícito, usa (descomenta e ajusta width/height se necessário):
-    # width = np.asarray(rgbd1.color).shape[1]
-    # height = np.asarray(rgbd1.color).shape[0]
-    # intr = o3d.camera.PinholeCameraIntrinsic(width, height, 517.3, 516.5, 318.6, 255.3)
-
+        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
+    
     pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd1, intr)
     pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd2, intr)
 
     # Orientar (flip para ter Z para a frente)
+    # Open3D usa um sistema de coordenadas onde o eixo Z aponta para trás da câmera
+    #O Tum dataset assume que o eixo Z aponta para a frente
+
     flip_T = [[1, 0, 0, 0],
               [0, -1, 0, 0],
               [0, 0, -1, 0],
@@ -76,10 +67,13 @@ def main():
     pcd2.transform(flip_T)
 
     # Downsampling
+    # O downsample ajuda a acelerar o processo de ICP e reduz ruído através da média local
+
     pcd1_ds = pcd1.voxel_down_sample(voxel_size=voxel_size)
     pcd2_ds = pcd2.voxel_down_sample(voxel_size=voxel_size)
 
     # Estimar normais
+    # O ICP precisa de normais para o método point-to-plane
     pcd1_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
     pcd2_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
 
@@ -92,6 +86,10 @@ def main():
     target = deepcopy(pcd2_ds)   # alvo
 
     # Método de estimação
+    # No método point-to-point é feita uma comparação direta entre pontos
+    # No método point-to-plane é feita uma comparação entre pplanos
+
+    # Permite a escolha entre métodos
     if ICP_METHOD.lower() == "point_to_plane":
         estimation = o3d.pipelines.registration.TransformationEstimationPointToPlane()
     elif ICP_METHOD.lower() == "point_to_point":
@@ -125,13 +123,6 @@ def main():
     source.paint_uniform_color([1, 0, 0])  # vermelho
     target.paint_uniform_color([0, 1, 0])  # verde
     o3d.visualization.draw_geometries([target, source])
-
-    # Debugging
-    print("Número de pontos em pcd1:", np.asarray(pcd1.points).shape)
-    print("Número de pontos em pcd1 downsampled:", np.asarray(pcd1_ds.points).shape)
-    print("Número de pontos em pcd2:", np.asarray(pcd2.points).shape)
-    print("Número de pontos em pcd2 downsampled:", np.asarray(pcd2_ds.points).shape)
-    print("pcd1_down normals computed:", len(pcd1_ds.normals))
 
 
 if __name__ == '__main__':

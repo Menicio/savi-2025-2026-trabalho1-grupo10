@@ -2,6 +2,7 @@
 # SAVI - Trabalho 1
 # Tarefa 2 — ICP Personalizado com Least-Squares e Inicialização Manual
 # João Menício - 93300
+# Pascoal Sumbo - 123190
 
 from copy import deepcopy
 import numpy as np
@@ -12,9 +13,9 @@ from scipy.optimize import least_squares
 # Parâmetros de otimização
 # ==========================
 
-VOXEL_SIZE       = 0.025               # m
+VOXEL_SIZE       = 0.025               # Tamanho do voxel para downsampling
 MAX_ITERS        = 500                 # iterações ICP externas
-MAX_CORR_DIST    = 0.01                # raio para aceitar correspondências
+MAX_CORR_DIST    = 0.01                # max_correspondence_distance,   distância máxima para aceitar correspondência
 LS_MAX_ITERS     = 50                  # iterações internas do least_squares
 LOSS_FUNC        = "huber"             # "linear", "soft_l1", "huber", "cauchy"
 LOSS_SCL         = 1.0                 # parâmetro de escala da loss robusta
@@ -26,7 +27,7 @@ SHOW_PROGRESS    = True                # print por iteração
 # Transformação inicial manual
 # ==========================
 
-T_INIT = np.eye(4)
+# T_INIT = np.eye(4)
 T_INIT = np.array([[ 0.99126294, 0.05318669, -0.12070192, -0.76307333],
          [-0.05498046, 0.99842031, -0.01157746, -0.08140979],
         [ 0.11989548, 0.01811255, 0.99262128, -0.11052373],
@@ -35,7 +36,7 @@ T_INIT = np.array([[ 0.99126294, 0.05318669, -0.12070192, -0.76307333],
 # ==========================
 
 def rodrigues(r):
-    """Converte vetor rotação (axis-angle) r (3,) em matriz 3x3 (Rodrigues)."""
+    """Converte vetor rotação em matriz de rotação 3x3."""
     theta = np.linalg.norm(r)
     if theta < 1e-12:
         return np.eye(3)
@@ -46,12 +47,12 @@ def rodrigues(r):
     R = np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
     return R
 
+# ==========================
 
 def se3_to_T(xi):
     """
     Constrói T a partir de um vetor de 6 parâmetros:
       xi = [rx, ry, rz, tx, ty, tz]
-    onde r* é axis-angle pequeno.
     """
     r = xi[:3]
     t = xi[3:]
@@ -74,7 +75,7 @@ def build_kdtree(pcd):
 
 def find_correspondences(src_pts, tgt_pcd, kdtree, max_dist):
     """
-    Para cada ponto da fonte (em Nx3), encontra vizinho mais próximo na alvo.
+    Para cada ponto da fonte, encontra vizinho mais próximo na alvo.
     Retorna índices válidos (i na src, j na tgt) e distâncias.
     """
     tgt_pts = np.asarray(tgt_pcd.points)
@@ -83,7 +84,6 @@ def find_correspondences(src_pts, tgt_pcd, kdtree, max_dist):
     dists = []
 
     for i, p in enumerate(src_pts):
-        # knn_search devolve (k, idx, dist2)
         k, idx, dist2 = kdtree.search_knn_vector_3d(p, 1)
         if k == 1:
             d = np.sqrt(dist2[0])
@@ -91,6 +91,7 @@ def find_correspondences(src_pts, tgt_pcd, kdtree, max_dist):
                 valid_src_idx.append(i)
                 valid_tgt_idx.append(idx[0])
                 dists.append(d)
+
     return np.array(valid_src_idx, dtype=int), np.array(valid_tgt_idx, dtype=int), np.array(dists)
 
 
@@ -138,27 +139,30 @@ def icp_custom_point_to_plane(source_pcd, target_pcd, T_init,
     # KDTree alvo
     kdtree = build_kdtree(target_pcd)
 
-    # T corrente
+    # T atual
     T_curr = T_init.copy()
 
     for it in range(1, max_iters + 1):
-        # pontos da fonte transformados pela T_curr (para corresponder)
+        # pontos da fonte transformados pela T_curr
         src_pts = np.asarray(source_pcd.points)
         src_tr = (T_curr[:3, :3] @ src_pts.T).T + T_curr[:3, 3]
 
-        # encontrar NN no alvo
+        # encontrar nearest neighbor no alvo
         src_idx, tgt_idx, dists = find_correspondences(src_tr, target_pcd, kdtree, max_corr_dist)
+
+        # Critério de paragem nas correspondências
         if len(src_idx) < 10:
             if show:
                 print(f"[ICP {it}] poucas correspondências ({len(src_idx)}). A terminar.")
             break
 
-        # preparar dados para LS
-        src_sel = src_pts[src_idx]                      # N x 3 (não-transformados: aplicamos T dentro do residual)
-        tgt_sel = tgt_pts[tgt_idx]                      # N x 3
-        nrm_sel = tgt_nrm[tgt_idx]                      # N x 3
+        # preparar dados para Least Squares
+        # pontos fonte, pontos alvo e normais alvo selecionados
+        src_sel = src_pts[src_idx]                      
+        tgt_sel = tgt_pts[tgt_idx]                      
+        nrm_sel = tgt_nrm[tgt_idx]                     
 
-        # função residual que o LS vai minimizar
+        # função residual que o Least Squares vai minimizar
         fun = lambda x: point_to_plane_residuals(x, src_sel, tgt_sel, nrm_sel, T_curr)
 
         # resolver incremento xi
@@ -167,6 +171,7 @@ def icp_custom_point_to_plane(source_pcd, target_pcd, T_init,
                             max_nfev=ls_max_iters, verbose=0)
 
         xi = res.x
+        
         # atualizar T
         dT = se3_to_T(xi)
         T_next = compose_T(dT, T_curr)
@@ -192,47 +197,58 @@ def icp_custom_point_to_plane(source_pcd, target_pcd, T_init,
 
 
 def main():
+
+    # Carregamento de Imagens e Filtragem de Profundidade
     voxel_size = VOXEL_SIZE
 
-    # --- Leitura das imagens TUM ---
+    # Upload files
+    # Point Cloud 1
     filename_rgb1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/1.png'
-    filename_depth1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png'
-    filename_rgb2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png'
-    filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
-
     rgb1 = o3d.io.read_image(filename_rgb1)
+
+    filename_depth1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png'
     depth1 = o3d.io.read_image(filename_depth1)
+
+    # Point Cloud 2
+    filename_rgb2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png'
     rgb2 = o3d.io.read_image(filename_rgb2)
+
+    filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
     depth2 = o3d.io.read_image(filename_depth2)
 
-    # TUM helper (faz conversão adequada para metros)
+    # Convert do RGB-D
     rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
     rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
 
-    # Intrínsecos (PrimeSenseDefault)
+    # Criar pointclouds
     intr = o3d.camera.PinholeCameraIntrinsic(
-        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
-    )
+        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
     
-    # Nuvens
     pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd1, intr)
     pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd2, intr)
 
-    # Flip para coordenadas "normais"
-    flip_T = np.array([[1, 0, 0, 0],
-                       [0,-1, 0, 0],
-                       [0, 0,-1, 0],
-                       [0, 0, 0, 1]])
+    # Orientar (flip para ter Z para a frente)
+    # Open3D usa um sistema de coordenadas onde o eixo Z aponta para trás da câmera
+    #O Tum dataset assume que o eixo Z aponta para a frente
+
+    flip_T = [[1, 0, 0, 0],
+              [0, -1, 0, 0],
+              [0, 0, -1, 0],
+              [0, 0, 0, 1]]
+    
     pcd1.transform(flip_T)
     pcd2.transform(flip_T)
 
-    # Downsample
-    pcd1_ds = pcd1.voxel_down_sample(voxel_size)
-    pcd2_ds = pcd2.voxel_down_sample(voxel_size)
+    # Downsampling
+    # O downsample ajuda a acelerar o processo de ICP e reduz ruído através da média local
 
-    # Estimar normais (raio proporcional ao voxel é mais robusto)
-    pcd1_ds.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2.0, max_nn=30))
-    pcd2_ds.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2.0, max_nn=30))
+    pcd1_ds = pcd1.voxel_down_sample(voxel_size=voxel_size)
+    pcd2_ds = pcd2.voxel_down_sample(voxel_size=voxel_size)
+
+    # Estimar normais
+    # O ICP precisa de normais para o método point-to-plane
+    pcd1_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
+    pcd2_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
 
     # --- Visualização antes ---
     b_tgt = deepcopy(pcd1_ds); b_tgt.paint_uniform_color([0,1,0])
