@@ -247,6 +247,15 @@ calculada usando *least squares* com função de custo robusta.
 
 <br clear="left"/>
 
+<img src="resultados/3.1.png" width="300" align="left">
+
+**Resultado da Tarefa 3 — Visualização**  
+Imagem mostrando a combinação das duas point clouds e a esfera mínima otimizada.
+
+<br clear="left"/>
+
+
+
 
 
 
