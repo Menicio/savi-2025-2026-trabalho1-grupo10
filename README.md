@@ -254,7 +254,14 @@ Imagem mostrando a combinação das duas point clouds e a esfera mínima otimiza
 
 <br clear="left"/>
 
+<img src="resultados/3.1.png" width="300" align="left">
 
+**Tarefa 3 — Resultado do ICP Customizado (Iteração Final)**  
+Esta imagem mostra a execução completa do método ICP personalizado,  
+incluindo a evolução do erro (RMSE), número de correspondências e  
+transformação final estimada entre as duas nuvens.
+
+<br clear="left"/>
 
 
 
