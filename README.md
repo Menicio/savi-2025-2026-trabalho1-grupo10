@@ -54,9 +54,9 @@ O ficheiro `main_ipc.py` implementa o registo entre duas vistas RGB-D:
 A execução do script produziu: 
 
 ### Visualização 1
-![Resultado ICP 2](images/tarefa1.111.png)
+![Resultado Tarefa 1](resultados/tarefa1.11.png)
 ### Visualização 2
-![Resultado ICP 1](images/tarefa1.11.png)
+![Resultado Tarefa 1](resultados/tarefa1.111.png)
 
 ### visualização
 A figura sugere que:
@@ -169,10 +169,7 @@ A visualização final está representada na imagem fornecida:
 
 ### Alinhamento Visual
 
-![Resultado ICP 2](images/2.0.png)
-![Resultado ICP 2](images/2.1.png)
-![Resultado ICP 2](images/22.png)
-![Resultado ICP 2](images/2.3.3.png)
+
 
 A imagem final mostra que:
 
