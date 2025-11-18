@@ -122,5 +122,132 @@ A necessidade de corrigir o sistema de coordenadas (eixo Z invertido).
 
 Os parâmetros (max_correspondence_distance e voxel_size) influenciam bastante a convergência — valores muito pequenos impediam a formação de pares suficientes. 
 
+## Tarefa 2 — ICP Personalizado com Otimização Least-Squares
+
+###  Objetivo
+Nesta tarefa foi implementada **uma versão personalizada do algoritmo ICP**, sem recorrer às funções de registo do Open3D.  
+O objetivo é compreender profundamente as etapas do ICP e compará-las com a solução nativa da Tarefa 1.
+
+A implementação segue a formulação **Point-to-Plane**, resolvida como um problema de otimização por mínimo erro quadrático.
+
+# Abordagem Implementada
+
+A estrutura do algoritmo no `main_custom_icp.py` pode ser dividida em:
+
+### **1. Downsampling das nuvens**
+Usando voxel grid (valores entre 0.02 e 0.05 m), reduzindo ruído e acelerando a KDTree.
+
+### **2. Estimativa de normais**
+Essencial para o ICP point-to-plane.
+
+### **3. Construção da KDTree**
+Para correspondências eficientes:
+
+### **4. Correspondências ponto-para-plano**
+ Para cada ponto da fonte procura-se o ponto mais próximo na target e extrai-se também a normal correspondente.
+
+### **5. Formulação do erro point-to-plane**
+ 
+### **6. Resolução com scipy.optimize.least_squares
+O problema completo é otimizado iterativamente:
+result = least_squares(residuals_function, xi0, loss="huber")
+
+### **7. Critério de paragem**
+
+## Resultados obtidos e interpretação
+Durante a execução foram impressas:
+
+Número de iterações realizadas
+
+RMSE em cada iteração
+
+Transformação incremental a cada passo
+
+Convergência final
+
+A visualização final está representada na imagem fornecida:
+
+### Alinhamento Visual
+
+![Resultado ICP 2](images/2.0.png)
+![Resultado ICP 2](images/2.1.png)
+![Resultado ICP 2](images/22.png)
+![Resultado ICP 2](images/2.3.3.png)
+
+A imagem final mostra que:
+
+[ICP 01] corr= 2138  rmse -> 0.00436 -> 0.00426  |xi|=6.887e-03
+...
+[ICP 145] corr= 3279  rmse -> 0.00423 -> 0.00423  |xi|=0.000e+00
+[ICP 145] incremento pequeno (|xi|<1e-10). Parar.
+
+Transformação final (fonte -> alvo):
+[[ 9.83554447e-01  8.09430270e-02 -1.61458572e-01 -8.92859175e-01]
+ [-7.99681301e-02  9.96718563e-01  1.25382411e-02 -1.09392682e-02]
+ [ 1.61943638e-01  5.79493072e-04  9.86799837e-01 -1.41796261e-01]
+ [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]
+
+A translação é de cerca de:
+
++ −0.89 m em X
+
++ −0.01 m em Y
+
++ −0.14 m em Z
+
+valores da mesma ordem de grandeza da Tarefa 1, com diferenças esperadas devido à transformação inicial, escolha de fonte/alvo e formulação numérica.
+
+As superfícies da fonte (vermelho) e da target (verde) coincidem na maioria das regiões.
+
+As estruturas principais da cena (mesa, objetos scanados e superfícies planas) alinham-se com precisão.
+
+As zonas de discrepância aparecem sobretudo:
+
+em áreas com poucos pontos. Em regiões com ruído depth nos contornos, comparando visualmente, o alinhamento é ligeiramente menos “limpo” do que na Tarefa 1, o que é esperado dado que:
+
+O ICP personalizado não utiliza todos os refinamentos internos do Open3D.
+
+O método point-to-plane depende fortemente da qualidade das normais.
+
+A otimização por least_squares não inclui heurísticas avançadas como trimming ou weight clipping.
+
+Na Tarefa 2, o ICP personalizado convergiu em 145 iterações, com um RMSE final de aproximadamente 0.0042. Ao longo das iterações, o número de correspondências válidas aumentou de cerca de 2100 para mais de 3200 pontos, mostrando que o alinhamento foi sendo progressivamente refinado. A norma do incremento em SE(3) decresceu até praticamente zero, ativando o critério de paragem baseado em |ξ| < 10⁻¹⁰. A transformação final apresenta uma translação de cerca de 0.9 m e uma rotação moderada entre as duas poses, valores coerentes com a geometria da cena. Estes resultados confirmam que a implementação manual do ICP point-to-plane está correta e é capaz de produzir um alinhamento de elevada precisão.
+
+### Desafios Encontrados
+
++ Parametrização correta em SE(3) e composição de transformações.
+
++ Escolha de parâmetros de otimização (loss, escalas, limites de distância).
+
++ Garantir que as normais na nuvem alvo estão bem estimadas e normalizadas.
+
+  ## Tarefa 3 – Esfera Englobante Mínima
+   O objetivo desta tarefa foi calcular a esfera de menor raio que engloba a nuvem de pontos (Minimum Enclosing Sphere)  após o alinhamento entre duas clouds, obtido através de um processo de ICP customizado desenvolvido na tarefa anterior.
+Em seguida, visualizou-se a nuvem dentro da esfera, de modo a avaliar o enquadramento espacial e a estabilidade do alinhamento final.
+
+Este problema é relevante em aplicações de:
+
++ Delimitação volumétrica,
+
++ Deteção de colisões,
+
++ Estimação de limites de objetos,
+
++ Compactação de representação geométrica.
+
+A tarefa baseia-se na cloud já alinhada pela Tarefa 2, garantindo que os pontos pertencem à mesma referência espacial.
+
+## Resultados obtidos
+![Resultado ICP 2](images/3.1.png)
+![Resultado ICP 2](images/3.222.png)
+![Resultado ICP 2](images/esfera.jpeg)
+
+
+
+
+
+
+
+
 
 
