@@ -50,10 +50,20 @@ O ficheiro `main_ipc.py` implementa o registo entre duas vistas RGB-D:
    + Fonte (source) alinhada a vermelho.
 
 ### Resultados Obtidos
-A execução do script produziu: 
 
-### Visualização 1
-![Resultado Tarefa 1](resultados/tarefa1.11.png)
+
+<img src="resultados/1.jpeg" width="330" align="left">
+
+**Tarefa 1 — Visualização das Nuvens de Pontos**
+
+- **Verde** → point cloud *target*  
+- **Vermelho** → point cloud *original*  
+- **Azul** → *source* depois da transformação estimada pelo ICP  
+
+Esta figura ilustra a sobreposição entre as duas aquisições RGB-D e o alinhamento obtido.
+
+<br clear="left"/>
+
 ### Visualização 2
 ![Resultado Tarefa 1](resultados/tarefa1.111.png)
 
@@ -146,7 +156,7 @@ Para correspondências eficientes:
 
 ### **5. Formulação do erro point-to-plane**
  
-## **6. Resolução com scipy.optimize.least_squares
+### **6. Resolução com scipy.optimize.least_squares**
 O problema completo é otimizado iterativamente:
 result = least_squares(residuals_function, xi0, loss="huber")
 
