@@ -17,7 +17,19 @@ O trabalho está dividido em três tarefas:
 2. **Tarefa 2** – ICP personalizado, implementado “à mão” com otimização de mínimos quadrados.  
 3. **Tarefa 3** – Cálculo da esfera englobante mínima após o alinhamento das nuvens.
 
+## Dependências
+ As seguintes bibliotecas são necessárias para executar os scripts:
 
+ + open3d
+
+ + NumPy
+
+ + scipy
+
+ + opencv-python
+
+ + matplotlib
+   
 ## 1 Tarefa 1 – ICP Nativo do Open3D
 
 ### 1.1. Abordagem
@@ -33,7 +45,11 @@ O ficheiro `main_ipc.py` implementa o registo entre duas vistas RGB-D:
 7. Execução do ICP do Open3D, com:
    - método **point-to-plane**  
    - `max_correspondence_distance = 0.6`  
-   - até 2400 iterações
+   - até 500 iterações
 8. Visualização final:  
    - alvo (target) a verde  
    - fonte (source) alinhada a vermelho.
+
+### Resultados Obtidos
+A execução do script produziu: 
+
