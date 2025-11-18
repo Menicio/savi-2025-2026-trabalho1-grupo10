@@ -53,3 +53,74 @@ O ficheiro `main_ipc.py` implementa o registo entre duas vistas RGB-D:
 ### Resultados Obtidos
 A execução do script produziu: 
 
+### Visualização 1
+![Resultado ICP 2](images/tarefa1.111.png)
+### Visualização 2
+![Resultado ICP 1](images/tarefa1.11.png)
+
+### visualização
+A figura sugere que:
+
+As superfícies coincidem na maior parte das regiões
+
+As discrepâncias existentes surgem apenas em zonas com ruído ou ausência de profundidade
+
+As cores misturam-se (verde+vermelho → amarelo), indicando bom alinhamento
+### Interpretação dos Resultados
+
+### Fitness = 0.9964
+
+Indica que 99.64% dos pontos da fonte encontraram correspondências válidas na target dentro do limite de 0.6 m.
+
+Este valor é excelente, e significa que:
+
+as duas clouds são geometricamente compatíveis, a sobreposição é muito elevada e há poucas áreas sem match.
+
+### Inlier RMSE = 0.107 m
+
+O erro médio entre correspondências após o alinhamento é cerca de 10.7 cm.
+
+Este valor é consistente com:
+
+Ruído da depth map
+
+Descontinuidades
+
+Superfícies inclinadas
+
+Passages oclusas entre as imagens.
+
+### Transformação estimada
+
+A matriz de rotação aproxima-se de uma matriz de rotação válida (ortogonal):
+
+rotação em torno do eixo Y ≈ −11°
+
+Ligeiras rotações nos restantes eixos
+
+tradução:
+
+x = +0.958 m
+
+y = +0.014 m
+
+z = −0.036 m
+
+O método Point-to-Plane provou ser o mais adequado para estas clouds densas.
+
+A convergência atingiu valores ótimos (fitness > 0.99).
+
+A transformação encontrada é fisicamente plausível e consistente com o movimento da câmera.
+
+O ICP nativo é extremamente estável e fornece um baseline ideal para comparar com a implementação personalizada da Tarefa 2.
+
+### Desafios Encontrados
+
+O ruído nas imagens depth exigiu downsampling para estabilizar o ICP.
+
+A necessidade de corrigir o sistema de coordenadas (eixo Z invertido).
+
+Os parâmetros (max_correspondence_distance e voxel_size) influenciam bastante a convergência — valores muito pequenos impediam a formação de pares suficientes. 
+
+
+
