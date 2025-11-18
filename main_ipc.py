@@ -39,27 +39,13 @@ def main():
     filename_rgb2   = root / "2.png"
     filename_depth2 = root / "depth2.png"
 
-
-    # Caminhos relativos para as imagens TUM
-    #rgb_dir = root / "tum_dataset" / "rgb"
-    #depth_dir = root / "tum_dataset" / "depth"
-
-    #filename_rgb1 = rgb_dir / "1.png"
-    #filename_depth1 = depth_dir / "1.png"
-    #filename_rgb2 = rgb_dir / "2.png"
-    #filename_depth2 = depth_dir / "2.png"
-
     # -----------------------------
     # Intrínsecos da câmara
     # -----------------------------
     intr = o3d.camera.PinholeCameraIntrinsic(
         o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
     )
-    # Alternativa TUM explícita (ex: fr1) se necessário:
-    # width  = np.asarray(o3d.io.read_image(str(filename_rgb1))).shape[1]
-    # height = np.asarray(o3d.io.read_image(str(filename_rgb1))).shape[0]
-    # intr = o3d.camera.PinholeCameraIntrinsic(width, height, 517.3, 516.5, 318.6, 255.3)
-
+    
     # -----------------------------
     # Construção e preparação das point clouds
     # (leitura RGB-D, criação de cloud, flip, voxel + normais)
@@ -73,6 +59,7 @@ def main():
 
     # Escolhe qual é a fonte e o alvo (a fonte é movida)
     source = deepcopy(pcd1_ds)   # fonte
+    old_source = deepcopy(pcd1_ds)   # fonte original para debugging
     target = deepcopy(pcd2_ds)   # alvo
 
     # Método de estimação
@@ -82,6 +69,11 @@ def main():
         estimation = o3d.pipelines.registration.TransformationEstimationPointToPoint()
     else:
         raise ValueError('ICP_METHOD deve ser "point_to_plane" ou "point_to_point"')
+    
+    # --- Visualização antes ---
+    b_tgt = deepcopy(pcd1_ds); b_tgt.paint_uniform_color([0,1,0])
+    b_src = deepcopy(pcd2_ds); b_src.paint_uniform_color([1,0,0])
+    o3d.visualization.draw_geometries([b_tgt, b_src])
 
     # Transformação inicial (identidade)
     trans_init = np.eye(4)
@@ -117,17 +109,19 @@ def main():
     # Aplica a transformação à nuvem fonte
     source.transform(reg_icp.transformation)
 
-    # Visualização (verde = alvo, vermelho = fonte alinhada)
+    # Visualização
     if SHOW_VIEWER:
-        source.paint_uniform_color([1, 0, 0])  # vermelho
+        source.paint_uniform_color([0, 0, 1])  # azul
         target.paint_uniform_color([0, 1, 0])  # verde
-        o3d.visualization.draw_geometries([target, source])
+        old_source.paint_uniform_color([1, 0, 0])  # vermelho (fonte original)
+        o3d.visualization.draw_geometries([target, source, old_source])
 
     # Debugging
     print("\n--- Debug ---")
     print("Número de pontos em pcd1 downsampled:", np.asarray(pcd1_ds.points).shape[0])
     print("Número de pontos em pcd2 downsampled:", np.asarray(pcd2_ds.points).shape[0])
     print("pcd1_down normals computed:", len(pcd1_ds.normals))
+    print("pcd2_down normals computed:", len(pcd2_ds.normals))
 
 
 if __name__ == '__main__':

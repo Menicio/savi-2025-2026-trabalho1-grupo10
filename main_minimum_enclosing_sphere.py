@@ -13,12 +13,14 @@ from scipy.optimize import least_squares
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 
+from utils_rgbd import load_and_prepare_cloud  # módulo utilitário
+
 # ==========================
 # Parâmetros de otimização (ICP)
 # ==========================
 
 VOXEL_SIZE       = 0.025               # Tamanho do voxel para downsampling
-MAX_ITERS        = 500                 # iterações ICP externas
+MAX_ITERS        = 10                 # iterações ICP externas
 MAX_CORR_DIST    = 0.01                # max_correspondence_distance, distância máxima para aceitar correspondência
 LS_MAX_ITERS     = 50                  # iterações internas do least_squares
 LOSS_FUNC        = "huber"             # "linear", "soft_l1", "huber", "cauchy"
@@ -29,13 +31,13 @@ SHOW_PROGRESS    = True                # print por iteração
 # ==========================
 # Transformação inicial manual (ICP)
 # ==========================
-
-T_INIT = np.array([
-    [ 0.99126294, 0.05318669, -0.12070192, -0.76307333],
-    [-0.05498046, 0.99842031, -0.01157746, -0.08140979],
-    [ 0.11989548, 0.01811255,  0.99262128, -0.11052373],
-    [ 0,          0,           0,           1.        ]
-])
+T_INIT = np.eye(4)
+#T_INIT = np.array([
+#    [ 0.99126294, 0.05318669, -0.12070192, -0.76307333],
+#    [-0.05498046, 0.99842031, -0.01157746, -0.08140979],
+#    [ 0.11989548, 0.01811255,  0.99262128, -0.11052373],
+#    [ 0,          0,           0,           1.        ]
+#])
 
 # ============================================================
 # Funções auxiliares de rotação / SE(3) (Tarefa 2)
@@ -298,49 +300,17 @@ def main():
 
     root = Path(__file__).resolve().parent
 
-    # Upload files
-    # Point Cloud 1
-    filename_rgb1 = root / "1.png"
-    rgb1 = o3d.io.read_image(filename_rgb1)
-
-    filename_depth1 = root / 'depth1.png'
-    depth1 = o3d.io.read_image(filename_depth1)
-
-    # Point Cloud 2
-    filename_rgb2 = root / '2.png'
-    rgb2 = o3d.io.read_image(filename_rgb2)
-
-    filename_depth2 = root / 'depth2.png'
-    depth2 = o3d.io.read_image(filename_depth2)
-
-    # Convert do RGB-D
-    rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
-    rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
+    filename_rgb1   = root / "1.png"
+    filename_depth1 = root / "depth1.png"
+    filename_rgb2   = root / "2.png"
+    filename_depth2 = root / "depth2.png"
 
     # Criar pointclouds
     intr = o3d.camera.PinholeCameraIntrinsic(
         o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
     
-    pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd1, intr)
-    pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd2, intr)
-
-    # Orientar (flip para ter Z para a frente)
-    # Open3D usa um sistema de coordenadas onde o eixo Z aponta para trás da câmera
-    #O Tum dataset assume que o eixo Z aponta para a frente
-
-    flip_T = [[1, 0, 0, 0],
-              [0, -1, 0, 0],
-              [0, 0, -1, 0],
-              [0, 0, 0, 1]]
-    
-    pcd1.transform(flip_T)
-    pcd2.transform(flip_T)
-
-    # Downsampling
-    # O downsample ajuda a acelerar o processo de ICP e reduz ruído através da média local
-
-    pcd1_ds = pcd1.voxel_down_sample(voxel_size=voxel_size)
-    pcd2_ds = pcd2.voxel_down_sample(voxel_size=voxel_size)
+    pcd1_ds = load_and_prepare_cloud(filename_rgb1, filename_depth1, intr, VOXEL_SIZE)
+    pcd2_ds = load_and_prepare_cloud(filename_rgb2, filename_depth2, intr, VOXEL_SIZE)
 
     # Estimar normais
     # O ICP precisa de normais para o método point-to-plane
@@ -370,19 +340,18 @@ def main():
 
     # --- Aplicar e visualizar resultado ---
     src_aligned = deepcopy(pcd2_ds).transform(T_final)
-    tgt_v = deepcopy(pcd1_ds);  tgt_v.paint_uniform_color([0,1,0])
-    src_v = deepcopy(src_aligned); src_v.paint_uniform_color([1,0,0])
-    o3d.visualization.draw_geometries([tgt_v, src_v])
+    f_tgt = deepcopy(pcd1_ds); f_tgt.paint_uniform_color([0,1,0])
+    f_src = deepcopy(pcd2_ds); f_src.paint_uniform_color([1,0,0])
+    f_src_al = deepcopy(src_aligned); f_src_al.paint_uniform_color([0,0,1])
+    o3d.visualization.draw_geometries([f_tgt, f_src,f_src_al])
 
     # ---------------------------------------------------------
-
-    # Aplicar T_final à nuvem original e calcular esfera – Tarefa 3
     
     # Aplicar transformação final à nuvem 2
-    pcd2_aligned = deepcopy(pcd2).transform(T_final)
+    pcd2_aligned = deepcopy(pcd2_ds).transform(T_final)
 
     # Combinar pontos das duas clouds já alinhadas
-    pts1 = np.asarray(pcd1.points)
+    pts1 = np.asarray(pcd1_ds.points)
     pts2 = np.asarray(pcd2_aligned.points)
     pts = np.vstack((pts1, pts2))
 
@@ -398,7 +367,7 @@ def main():
     print("Número de iterações LS:", result.nfev)
 
     # Visualização final: clouds originais (uma delas alinhada) + esfera transparente
-    p1 = deepcopy(pcd1);         p1.paint_uniform_color([0,1,0])   # verde
+    p1 = deepcopy(pcd1_ds);         p1.paint_uniform_color([0,1,0])   # verde
     p2 = deepcopy(pcd2_aligned); p2.paint_uniform_color([0,0,1])   # azul
 
     o3d_draw_sphere(center, radius, [p1, p2])

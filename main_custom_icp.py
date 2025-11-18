@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SAVI - Trabalho 1
 # Tarefa 2 — ICP Personalizado com Least-Squares e Inicialização Manual
+
 # João Menício - 93300
 # Pascoal Sumbo - 123190
 
@@ -17,7 +18,7 @@ from utils_rgbd import load_and_prepare_cloud  # módulo comum RGB-D
 
 VOXEL_SIZE       = 0.025               # Tamanho do voxel para downsampling
 MAX_ITERS        = 500                 # iterações ICP externas
-MAX_CORR_DIST    = 0.01                # max_correspondence_distance,   distância máxima para aceitar correspondência
+MAX_CORR_DIST    = 0.01                # max_correspondence_distance, distância máxima para aceitar correspondência
 LS_MAX_ITERS     = 50                  # iterações internas do least_squares
 LOSS_FUNC        = "huber"             # "linear", "soft_l1", "huber", "cauchy"
 LOSS_SCL         = 1.0                 # parâmetro de escala da loss robusta
@@ -204,22 +205,6 @@ def main():
     filename_rgb2   = root / "2.png"
     filename_depth2 = root / "depth2.png"
 
-
-    # --- Leitura das imagens TUM ---
-    #filename_rgb1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/1.png'
-    #filename_depth1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png'
-    #filename_rgb2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png'
-    #filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
-
-    #rgb1 = o3d.io.read_image(filename_rgb1)
-    #depth1 = o3d.io.read_image(filename_depth1)
-    #rgb2 = o3d.io.read_image(filename_rgb2)
-    #depth2 = o3d.io.read_image(filename_depth2)
-
-    # TUM helper (faz conversão adequada para metros)
-    #rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
-    #rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
-
     # Intrínsecos (PrimeSenseDefault)
     intr = o3d.camera.PinholeCameraIntrinsic(
         o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
@@ -252,11 +237,13 @@ def main():
 
     print("\nTransformação final (fonte -> alvo):\n", T_final)
 
-    # --- Aplicar e visualizar resultado ---
+    # --- Aplicar e visualizar resultado --- cinzento???
     src_aligned = deepcopy(pcd2_ds).transform(T_final)
-    tgt_v = deepcopy(pcd1_ds);  tgt_v.paint_uniform_color([0,1,0])
-    src_v = deepcopy(src_aligned); src_v.paint_uniform_color([1,0,0])
-    o3d.visualization.draw_geometries([tgt_v, src_v])
+
+    f_tgt = deepcopy(pcd1_ds); f_tgt.paint_uniform_color([0,1,0])
+    f_src = deepcopy(pcd2_ds); f_src.paint_uniform_color([1,0,0])
+    f_src_al = deepcopy(src_aligned); f_src_al.paint_uniform_color([0,0,1])
+    o3d.visualization.draw_geometries([f_tgt, f_src,f_src_al])
 
 
 if __name__ == "__main__":
