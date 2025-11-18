@@ -7,7 +7,6 @@
 #  Introdução
 
 Este repositório contém a resolução do Trabalho Prático SAVI, focado no registo de nuvens de pontos 3D obtidas a partir de scans RGB-D. O trabalho explora o algoritmo Iterative Closest Point (ICP) em diferentes níveis de abstração, desde o uso de ferramentas nativas do Open3D até a implementação de um otimizador personalizado com scipy.optimize.least_squares. Por fim, é implementada uma otimização de minimização para encontrar a Esfera Englobante Mínima das nuvens de pontos registradas.
-Este trabalho aborda três tarefas fundamentais no contexto de registo 3D e reconstrução geométrica:
 
 O objetivo deste trabalho é implementar e comparar diferentes abordagens de registo 3D com base em nuvens de pontos obtidas a partir de imagens RGB-D, bem como explorar uma aplicação simples de otimização geométrica (cálculo da esfera englobante mínima).
 
@@ -43,12 +42,12 @@ O ficheiro `main_ipc.py` implementa o registo entre duas vistas RGB-D:
 5. **Downsampling** com voxel grid (`voxel_size = 0.025`) para reduzir ruído e número de pontos.
 6. Estimativa de normais em ambas as clouds.
 7. Execução do ICP do Open3D, com:
-   - método **point-to-plane**  
-   - `max_correspondence_distance = 0.6`  
-   - até 500 iterações
+   + Método **point-to-plane**  
+   + `max_correspondence_distance = 0.6`  
+   + Até 500 iterações
 8. Visualização final:  
-   - alvo (target) a verde  
-   - fonte (source) alinhada a vermelho.
+   + Alvo (target) a verde  
+   + Fonte (source) alinhada a vermelho.
 
 ### Resultados Obtidos
 A execução do script produziu: 
@@ -61,20 +60,19 @@ A execução do script produziu:
 ### visualização
 A figura sugere que:
 
-As superfícies coincidem na maior parte das regiões
+ + As superfícies coincidem na maior parte das regiões
 
-As discrepâncias existentes surgem apenas em zonas com ruído ou ausência de profundidade
+ + As discrepâncias existentes surgem apenas em zonas com ruído ou ausência de profundidade
 
-As cores misturam-se (verde+vermelho → amarelo), indicando bom alinhamento
-### Interpretação dos Resultados
+ + As cores misturam-se (verde+vermelho → amarelo), indicando bom alinhamento
+   
+## Interpretação dos Resultados
 
 ### Fitness = 0.9964
 
 Indica que 99.64% dos pontos da fonte encontraram correspondências válidas na target dentro do limite de 0.6 m.
 
-Este valor é excelente, e significa que:
-
-as duas clouds são geometricamente compatíveis, a sobreposição é muito elevada e há poucas áreas sem match.
+Este valor é excelente, e significa que as duas clouds são geometricamente compatíveis, a sobreposição é muito elevada e há poucas áreas sem match.
 
 ### Inlier RMSE = 0.107 m
 
@@ -82,29 +80,29 @@ O erro médio entre correspondências após o alinhamento é cerca de 10.7 cm.
 
 Este valor é consistente com:
 
-Ruído da depth map
+ + Ruído da depth map
 
-Descontinuidades
+ + Descontinuidades
 
-Superfícies inclinadas
+ + Superfícies inclinadas
 
-Passages oclusas entre as imagens.
++ Passages oclusas entre as imagens.
 
 ### Transformação estimada
 
 A matriz de rotação aproxima-se de uma matriz de rotação válida (ortogonal):
 
-rotação em torno do eixo Y ≈ −11°
+ + Rotação em torno do eixo Y ≈ −11°
 
-Ligeiras rotações nos restantes eixos
+ + Ligeiras rotações nos restantes eixos
 
-tradução:
+Tradução:
 
-x = +0.958 m
+ + x = +0.958 m
 
-y = +0.014 m
+ + y = +0.014 m
 
-z = −0.036 m
+ + z = −0.036 m
 
 O método Point-to-Plane provou ser o mais adequado para estas clouds densas.
 
@@ -132,7 +130,7 @@ A implementação segue a formulação **Point-to-Plane**, resolvida como um pro
 
 # Abordagem Implementada
 
-A estrutura do algoritmo no `main_custom_icp.py` pode ser dividida em:
+A estrutura do algoritmo no `main_custom_icp.py` pode ser dividida em
 
 ### **1. Downsampling das nuvens**
 Usando voxel grid (valores entre 0.02 e 0.05 m), reduzindo ruído e acelerando a KDTree.
@@ -148,7 +146,7 @@ Para correspondências eficientes:
 
 ### **5. Formulação do erro point-to-plane**
  
-### **6. Resolução com scipy.optimize.least_squares
+## **6. Resolução com scipy.optimize.least_squares
 O problema completo é otimizado iterativamente:
 result = least_squares(residuals_function, xi0, loss="huber")
 
@@ -157,15 +155,15 @@ result = least_squares(residuals_function, xi0, loss="huber")
 ## Resultados obtidos e interpretação
 Durante a execução foram impressas:
 
-Número de iterações realizadas
+ + Número de iterações realizadas
 
-RMSE em cada iteração
+ + RMSE em cada iteração
 
-Transformação incremental a cada passo
+ + Transformação incremental a cada passo
 
-Convergência final
+ + Convergência final
 
-A visualização final está representada na imagem fornecida:
+A visualização final está representada na imagem fornecida
 
 ### Alinhamento Visual
 <img src="resultados/2.0.png" width="350">
@@ -174,7 +172,7 @@ A visualização final está representada na imagem fornecida:
 <img src="resultados/2.3.3.png" width="350">
 
 
-A imagem final mostra que:
+A imagem final mostra que
 
 [ICP 01] corr= 2138  rmse -> 0.00436 -> 0.00426  |xi|=6.887e-03
 ...
@@ -201,15 +199,13 @@ As superfícies da fonte (vermelho) e da target (verde) coincidem na maioria das
 
 As estruturas principais da cena (mesa, objetos scanados e superfícies planas) alinham-se com precisão.
 
-As zonas de discrepância aparecem sobretudo:
+As zonas de discrepância aparecem sobretudo em áreas com poucos pontos. Em regiões com ruído depth nos contornos, comparando visualmente, o alinhamento é ligeiramente menos “limpo” do que na Tarefa 1, o que é esperado dado que:
 
-em áreas com poucos pontos. Em regiões com ruído depth nos contornos, comparando visualmente, o alinhamento é ligeiramente menos “limpo” do que na Tarefa 1, o que é esperado dado que:
+ + O ICP personalizado não utiliza todos os refinamentos internos do Open3D.
 
-O ICP personalizado não utiliza todos os refinamentos internos do Open3D.
+ + O método point-to-plane depende fortemente da qualidade das normais.
 
-O método point-to-plane depende fortemente da qualidade das normais.
-
-A otimização por least_squares não inclui heurísticas avançadas como trimming ou weight clipping.
+ + A otimização por least_squares não inclui heurísticas avançadas como trimming ou weight clipping.
 
 Na Tarefa 2, o ICP personalizado convergiu em 145 iterações, com um RMSE final de aproximadamente 0.0042. Ao longo das iterações, o número de correspondências válidas aumentou de cerca de 2100 para mais de 3200 pontos, mostrando que o alinhamento foi sendo progressivamente refinado. A norma do incremento em SE(3) decresceu até praticamente zero, ativando o critério de paragem baseado em |ξ| < 10⁻¹⁰. A transformação final apresenta uma translação de cerca de 0.9 m e uma rotação moderada entre as duas poses, valores coerentes com a geometria da cena. Estes resultados confirmam que a implementação manual do ICP point-to-plane está correta e é capaz de produzir um alinhamento de elevada precisão.
 
@@ -247,14 +243,9 @@ calculada usando *least squares* com função de custo robusta.
 
 <br clear="left"/>
 
-<img src="resultados/3.1.png" width="300" align="left">
 
-**Resultado da Tarefa 3 — Visualização**  
-Imagem mostrando a combinação das duas point clouds e a esfera mínima otimizada.
 
-<br clear="left"/>
-
-<img src="resultados/3.1.png" width="300" align="left">
+<img src="resultados/tarefa3.1.png" width="300" align="left">
 
 **Tarefa 3 — Resultado do ICP Customizado (Iteração Final)**  
 Esta imagem mostra a execução completa do método ICP personalizado,  
