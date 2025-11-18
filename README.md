@@ -238,9 +238,14 @@ Este problema é relevante em aplicações de:
 A tarefa baseia-se na cloud já alinhada pela Tarefa 2, garantindo que os pontos pertencem à mesma referência espacial.
 
 ## Resultados obtidos
-![Resultado ICP 2](images/3.1.png)
-![Resultado ICP 2](images/3.222.png)
-![Resultado ICP 2](images/esfera.jpeg)
+
+<img src="resultados/esfera.jpeg" width="300" align="left">
+
+**Esfera Envolvente Mínima — Resultado Final**  
+Esta imagem mostra a esfera otimizada que engloba ambas as nuvens de pontos,  
+calculada usando *least squares* com função de custo robusta.
+
+<br clear="left"/>
 
 
 
