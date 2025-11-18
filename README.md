@@ -168,7 +168,10 @@ Convergência final
 A visualização final está representada na imagem fornecida:
 
 ### Alinhamento Visual
-
+<img src="resultados/2.0.png" width="350">
+<img src="resultados/2.1.png" width="350">
+<img src="resultados/22.png" width="350">
+<img src="resultados/2.3.3.png" width="350">
 
 
 A imagem final mostra que:
