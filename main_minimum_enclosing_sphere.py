@@ -1,227 +1,44 @@
 #!/usr/bin/env python3
 # SAVI - Trabalho 1
-# Tarefa 3 - Otimização da Esfera Englobante Mínima
-
+# Tarefa 3 – Esfera Englobante Mínima
 # João Menício - 93300
-# Pascoal Sumbo - 123190
 
-from copy import deepcopy
 import numpy as np
 import open3d as o3d
 from scipy.optimize import least_squares
-import open3d.visualization.gui as gui
-import open3d.visualization.rendering as rendering
+from copy import deepcopy
+from pathlib import Path
+from utils_rgbd import load_and_prepare_cloud
 
-# ==========================
-# Parâmetros de otimização (ICP)
-# ==========================
 
-VOXEL_SIZE       = 0.025               # Tamanho do voxel para downsampling
-MAX_ITERS        = 500                 # iterações ICP externas
-MAX_CORR_DIST    = 0.01                # max_correspondence_distance, distância máxima para aceitar correspondência
-LS_MAX_ITERS     = 50                  # iterações internas do least_squares
-LOSS_FUNC        = "huber"             # "linear", "soft_l1", "huber", "cauchy"
-LOSS_SCL         = 1.0                 # parâmetro de escala da loss robusta
-EPS_XI_NORM      = 1e-10               # critério de paragem no incremento
-SHOW_PROGRESS    = True                # print por iteração
-
-# ==========================
-# Transformação inicial manual (ICP)
-# ==========================
-
-T_INIT = np.array([
-    [ 0.99126294, 0.05318669, -0.12070192, -0.76307333],
-    [-0.05498046, 0.99842031, -0.01157746, -0.08140979],
-    [ 0.11989548, 0.01811255,  0.99262128, -0.11052373],
-    [ 0,          0,           0,           1.        ]
-])
+VOXEL_SIZE = 0.025  # manter consistente com as outras tarefas
 
 # ============================================================
-# Funções auxiliares de rotação / SE(3) (Tarefa 2)
-# ============================================================
-
-def rodrigues(r):
-    """Converte vetor rotação em matriz de rotação 3x3 (fórmula de Rodrigues)."""
-    theta = np.linalg.norm(r)
-    if theta < 1e-12:
-        return np.eye(3)
-    k = r / theta
-    K = np.array([[0,     -k[2],  k[1]],
-                  [k[2],   0,    -k[0]],
-                  [-k[1],  k[0],  0   ]])
-    R = np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
-    return R
-
-
-def se3_to_T(xi):
-    """
-    Constrói T a partir de um vetor de 6 parâmetros:
-      xi = [rx, ry, rz, tx, ty, tz]
-    """
-    r = xi[:3]
-    t = xi[3:]
-    R = rodrigues(r)
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = t
-    return T
-
-
-def compose_T(T1, T2):
-    """Composição SE(3): retorna T1 @ T2 (incremento à esquerda)."""
-    return T1 @ T2
-
-
-def build_kdtree(pcd):
-    """KDTreeFlann do Open3D para a nuvem alvo."""
-    return o3d.geometry.KDTreeFlann(pcd)
-
-
-def find_correspondences(src_pts, tgt_pcd, kdtree, max_dist):
-    """
-    Para cada ponto da fonte, encontra vizinho mais próximo na alvo.
-    Retorna índices válidos (i na src, j na tgt) e distâncias.
-    """
-    tgt_pts = np.asarray(tgt_pcd.points)
-    valid_src_idx = []
-    valid_tgt_idx = []
-    dists = []
-
-    for i, p in enumerate(src_pts):
-        k, idx, dist2 = kdtree.search_knn_vector_3d(p, 1)
-        if k == 1:
-            d = np.sqrt(dist2[0])
-            if d < max_dist:
-                valid_src_idx.append(i)
-                valid_tgt_idx.append(idx[0])
-                dists.append(d)
-
-    return np.array(valid_src_idx, dtype=int), np.array(valid_tgt_idx, dtype=int), np.array(dists)
-
-
-def point_to_plane_residuals(xi, src_pts, tgt_pts, tgt_normals, T_curr):
-    """
-    Residuals point-to-plane: n^T ( R*(T_curr*p_src) + t - p_tgt ).
-    Nota: aplicamos incremento à esquerda: T_new = exp(xi^) @ T_curr
-    """
-    # incremento
-    dT = se3_to_T(xi)
-    T = compose_T(dT, T_curr)
-    R = T[:3, :3]
-    t = T[:3, 3]
-
-    # transformar pontos fonte
-    src_tr = (R @ src_pts.T).T + t  # Nx3
-
-    # distâncias assinadas ao plano
-    diff = src_tr - tgt_pts         # Nx3
-    res = np.sum(tgt_normals * diff, axis=1)  # N
-    return res
-
-
-def icp_custom_point_to_plane(source_pcd, target_pcd, T_init,
-                              max_corr_dist=0.07,
-                              max_iters=15,
-                              ls_max_iters=50,
-                              loss="huber",
-                              loss_scale=1.0,
-                              eps_xi=1e-5,
-                              show=True):
-    """
-    ICP personalizado:
-      - correspondências: KDTree (NN) com corte por distância
-      - custo: point-to-plane
-      - solver: scipy.optimize.least_squares
-      - atualização: T_{k+1} = exp(xi^) @ T_k
-    """
-    # arrays numpy
-    tgt_pts = np.asarray(target_pcd.points)
-    tgt_nrm = np.asarray(target_pcd.normals)
-    if tgt_nrm.shape[0] != tgt_pts.shape[0]:
-        raise RuntimeError("Target sem normais. Estima primeiro as normais do alvo.")
-
-    # KDTree alvo
-    kdtree = build_kdtree(target_pcd)
-
-    # T atual
-    T_curr = T_init.copy()
-
-    for it in range(1, max_iters + 1):
-        # pontos da fonte transformados pela T_curr
-        src_pts = np.asarray(source_pcd.points)
-        src_tr = (T_curr[:3, :3] @ src_pts.T).T + T_curr[:3, 3]
-
-        # encontrar nearest neighbor no alvo
-        src_idx, tgt_idx, dists = find_correspondences(src_tr, target_pcd, kdtree, max_corr_dist)
-
-        # Critério de paragem nas correspondências
-        if len(src_idx) < 10:
-            if show:
-                print(f"[ICP {it}] poucas correspondências ({len(src_idx)}). A terminar.")
-            break
-
-        # preparar dados para Least Squares
-        src_sel = src_pts[src_idx]          # pontos fonte
-        tgt_sel = tgt_pts[tgt_idx]          # pontos alvo
-        nrm_sel = tgt_nrm[tgt_idx]          # normais alvo
-
-        # função residual que o Least Squares vai minimizar
-        fun = lambda x: point_to_plane_residuals(x, src_sel, tgt_sel, nrm_sel, T_curr)
-
-        # resolver incremento xi
-        res = least_squares(fun, x0=np.zeros(6),
-                            loss=loss, f_scale=loss_scale,
-                            max_nfev=ls_max_iters, verbose=0)
-
-        xi = res.x
-        
-        # atualizar T
-        dT = se3_to_T(xi)
-        T_next = compose_T(dT, T_curr)
-
-        # métricas simples
-        res_vals = fun(np.zeros(6))   # residual com T_curr
-        res_vals_next = point_to_plane_residuals(np.zeros(6), src_sel, tgt_sel, nrm_sel, T_next)
-        rmse_curr = np.sqrt(np.mean(res_vals**2))
-        rmse_next = np.sqrt(np.mean(res_vals_next**2))
-
-        if show:
-            print(f"[ICP {it:02d}] corr={len(src_idx):5d}  rmse -> {rmse_curr:.5f} -> {rmse_next:.5f}  |xi|={np.linalg.norm(xi):.3e}")
-
-        T_curr = T_next
-
-        # critério de paragem no incremento
-        if np.linalg.norm(xi) < eps_xi:
-            if show:
-                print(f"[ICP {it}] incremento pequeno (|xi|<{eps_xi}). Parar.")
-            break
-
-    return T_curr
-
-# ============================================================
-# Tarefa 3 – Esfera Englobante Mínima (funções)
+# Função de resíduos da esfera:
+# residual_i = max(0, ||p_i - centro|| - r)
+# penaliza apenas pontos fora da esfera
 # ============================================================
 
 def sphere_residuals(params, points):
     """
     params = [xc, yc, zc, r]
     residual_i = max(0, ||p_i - c|| - r)
-    Penaliza apenas pontos fora da esfera.
     """
     xc, yc, zc, r = params
     c = np.array([xc, yc, zc])
 
     d = np.linalg.norm(points - c, axis=1)   # distâncias ao centro
-    res = np.maximum(0, d - r)               # só pontos fora contribuem
+    res = np.maximum(0, d - r)                # só pontos fora contribuem
 
     return res
 
 
+# ============================================================
+# Otimização do centro e raio da esfera
+# ============================================================
+
 def compute_min_enclosing_sphere(points, init_center=None, init_r=1.0):
-    """
-    Otimiza o centro e o raio da esfera englobante mínima
-    usando least_squares com loss robusta.
-    """
+
     if init_center is None:
         init_center = np.mean(points, axis=0)
 
@@ -240,163 +57,95 @@ def compute_min_enclosing_sphere(points, init_center=None, init_r=1.0):
     return np.array([xc, yc, zc]), abs(r), result
 
 
+# ============================================================
+# Visualização Open3D
+# ============================================================
+
 def o3d_draw_sphere(center, radius, clouds=[]):
-    """
-    Visualização da esfera englobante mínima com a(s) nuvem(s) de pontos.
-    Usa o módulo GUI de Open3D para permitir transparência no material.
-    """
-    # --- Inicializar GUI ---
-    app = gui.Application.instance
-    app.initialize()
-
-    # --- Criar janela ---
-    window = app.create_window("Esfera Englobante Mínima (Transparente)", 1024, 768)
-
-    # --- Criar widget de cena ---
-    widget = gui.SceneWidget()
-    widget.scene = rendering.Open3DScene(window.renderer)
-    scene = widget.scene
-
-    # --- Criar esfera ---
-    sphere = o3d.geometry.TriangleMesh.create_sphere(radius)
+    # esfera (mesh)
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    sphere.paint_uniform_color([1, 0, 0])        # vermelho
     sphere.compute_vertex_normals()
     sphere.translate(center)
 
-    # --- Material transparente ---
-    material = rendering.MaterialRecord()
-    material.shader = "defaultLitTransparency"
-    material.base_color = (1.0, 0.0, 0.0, 0.75)  # RGBA (75% opaca, 25% transparente)
+    # clouds são point clouds → usam estimate_normals()
+    for c in clouds:
+        c.estimate_normals()
 
-    # Adicionar esfera
-    scene.add_geometry("sphere", sphere, material)
+    o3d.visualization.draw_geometries([sphere] + clouds)
 
-    # Adicionar nuvens
-    for i, cloud in enumerate(clouds):
-        cloud.estimate_normals()
-        mat = rendering.MaterialRecord()
-        mat.shader = "defaultUnlit"
-        scene.add_geometry(f"cloud_{i}", cloud, mat)
 
-    # --- Ajustar câmara ---
-    bbox = sphere.get_axis_aligned_bounding_box()
-    center_cam = bbox.get_center()
-    extent = np.linalg.norm(bbox.get_extent())
-    scene.camera.look_at(center, center_cam + np.array([0, 0, extent]), np.array([0, 1, 0]))
-
-    # --- Adicionar widget à janela ---
-    window.add_child(widget)
-
-    # --- Mostrar ---
-    app.run()
-
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
 
-    # Carregamento de Imagens e Filtragem de Profundidade
-    voxel_size = VOXEL_SIZE
+    voxel_size = 0.025
+                 # Diretório base (mesma pasta do .py e das imagens)
+    root = Path(__file__).resolve().parent
+                 # Ficheiros RGB-D na mesma pasta
 
-    # Upload files
-    # Point Cloud 1
-    filename_rgb1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/1.png'
-    rgb1 = o3d.io.read_image(filename_rgb1)
+    rgb1_path   = root / "1.png"
+    depth1_path = root / "depth1.png"
+    rgb2_path   = root / "2.png"
+    depth2_path = root / "depth2.png"
 
-    filename_depth1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png'
-    depth1 = o3d.io.read_image(filename_depth1)
+    
+    
+    # ---------------------------------------------------------
+    # 1) Carregar imagens TUM (como nas tarefas anteriores)
+    # ---------------------------------------------------------
+    
 
-    # Point Cloud 2
-    filename_rgb2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png'
-    rgb2 = o3d.io.read_image(filename_rgb2)
+    #rgb1   = o3d.io.read_image("/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/1.png")
+    #depth1 = o3d.io.read_image("/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png")
 
-    filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
-    depth2 = o3d.io.read_image(filename_depth2)
+    #rgb2   = o3d.io.read_image("/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png")
+    #depth2 = o3d.io.read_image("/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png")
 
-    # Convert do RGB-D
-    rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
-    rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
+    # RGBD
+    #rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
+    #rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
 
-    # Criar pointclouds
+    # Intrinsecos
     intr = o3d.camera.PinholeCameraIntrinsic(
-        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
-    
-    pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd1, intr)
-    pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd2, intr)
-
-    # Orientar (flip para ter Z para a frente)
-    # Open3D usa um sistema de coordenadas onde o eixo Z aponta para trás da câmera
-    #O Tum dataset assume que o eixo Z aponta para a frente
-
-    flip_T = [[1, 0, 0, 0],
-              [0, -1, 0, 0],
-              [0, 0, -1, 0],
-              [0, 0, 0, 1]]
-    
-    pcd1.transform(flip_T)
-    pcd2.transform(flip_T)
-
-    # Downsampling
-    # O downsample ajuda a acelerar o processo de ICP e reduz ruído através da média local
-
-    pcd1_ds = pcd1.voxel_down_sample(voxel_size=voxel_size)
-    pcd2_ds = pcd2.voxel_down_sample(voxel_size=voxel_size)
-
-    # Estimar normais
-    # O ICP precisa de normais para o método point-to-plane
-    pcd1_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
-    pcd2_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
-
-    # --- Visualização antes ---
-    b_tgt = deepcopy(pcd1_ds); b_tgt.paint_uniform_color([0,1,0])
-    b_src = deepcopy(pcd2_ds); b_src.paint_uniform_color([1,0,0])
-    o3d.visualization.draw_geometries([b_tgt, b_src])
-
-    # --- ICP personalizado (Point-to-Plane + LS) ---
-    T_final = icp_custom_point_to_plane(
-        source_pcd=pcd2_ds,
-        target_pcd=pcd1_ds,
-        T_init=T_INIT,
-        max_corr_dist=MAX_CORR_DIST,
-        max_iters=MAX_ITERS,
-        ls_max_iters=LS_MAX_ITERS,
-        loss=LOSS_FUNC,
-        loss_scale=LOSS_SCL,
-        eps_xi=EPS_XI_NORM,
-        show=SHOW_PROGRESS
+        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
     )
 
-    print("\nTransformação final (fonte -> alvo):\n", T_final)
-
-    # --- Aplicar e visualizar resultado ---
-    src_aligned = deepcopy(pcd2_ds).transform(T_final)
-    tgt_v = deepcopy(pcd1_ds);  tgt_v.paint_uniform_color([0,1,0])
-    src_v = deepcopy(src_aligned); src_v.paint_uniform_color([1,0,0])
-    o3d.visualization.draw_geometries([tgt_v, src_v])
-
+      # ---------------------------------------------------------
+    # 1) Carregar e preparar as clouds (flip + voxel + normais)
     # ---------------------------------------------------------
+    pcd1 = load_and_prepare_cloud(rgb1_path, depth1_path, intr, VOXEL_SIZE)
+    pcd2 = load_and_prepare_cloud(rgb2_path, depth2_path, intr, VOXEL_SIZE)
 
-    # Aplicar T_final à nuvem original e calcular esfera – Tarefa 3
-    
-    # Aplicar transformação final à nuvem 2
-    pcd2_aligned = deepcopy(pcd2).transform(T_final)
 
-    # Combinar pontos das duas clouds já alinhadas
+  
+    # Pontos combinados
     pts1 = np.asarray(pcd1.points)
-    pts2 = np.asarray(pcd2_aligned.points)
+    pts2 = np.asarray(pcd2.points)
     pts = np.vstack((pts1, pts2))
 
-    print("Total de pontos (PC1 + PC2_aligned):", pts.shape[0])
+    print("Total de pontos (PC1 + PC2):", pts.shape[0])
 
-    # Otimização da esfera englobante mínima
+    # ---------------------------------------------------------
+    # 2) Otimização da Esfera Mínima
+    # ---------------------------------------------------------
+
     center, radius, result = compute_min_enclosing_sphere(pts)
 
-    print("\n===== ESFERA ENGLOBANTE MÍNIMA =====")
+    print("\n===== RESULTADO FINAL =====")
     print("Centro:", center)
     print("Raio  :", radius)
     print("Custo final:", result.cost)
-    print("Número de iterações LS:", result.nfev)
+    print("Número de iterações:", result.nfev)
 
-    # Visualização final: clouds originais (uma delas alinhada) + esfera transparente
-    p1 = deepcopy(pcd1);         p1.paint_uniform_color([0,1,0])   # verde
-    p2 = deepcopy(pcd2_aligned); p2.paint_uniform_color([0,0,1])   # azul
+    # ---------------------------------------------------------
+    # 3) Visualização
+    # ---------------------------------------------------------
+
+    p1 = deepcopy(pcd1); p1.paint_uniform_color([0,1,0])   # verde
+    p2 = deepcopy(pcd2); p2.paint_uniform_color([0,0,1])   # azul
 
     o3d_draw_sphere(center, radius, [p1, p2])
 

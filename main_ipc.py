@@ -1,81 +1,71 @@
 #!/usr/bin/env python3
 # SAVI - Trabalho 1
-# Tarefa 1 - Reisto ICP com as Ferramentas Nativas do Open3D
+# Tarefa 1 — ICP com Open3D
 # João Menício - 93300
 # Pascoal Sumbo - 123190
 
+"""
+Registo de duas nuvens de pontos RGB-D usando ICP (Open3D).
+As imagens usadas são 1.png e 2.png do dataset TUM.
+"""
+
 from copy import deepcopy
-from functools import partial
-import glob
-from random import randint
-from matplotlib import pyplot as plt
+from pathlib import Path
+import time
+
 import numpy as np
-import argparse
 import open3d as o3d
+
+from utils_rgbd import load_and_prepare_cloud  # módulo utilitário
 
 # ==========================
 # PARÂMETROS EDITÁVEIS
 # ==========================
-VOXEL_SIZE = 0.025              # Tamanho da zona do voxel para downsampling
-MAX_CORR_DIST = 0.6             # max_correspondence_distance,   distância máxima para aceitar correspondências
-ICP_METHOD = "point_to_plane"   # "point_to_plane" ou "point_to_point"
-MAX_ITERS = 2400                # iterações máximas do ICP
+VOXEL_SIZE = 0.025               # Tamanho do voxel (m), deve ser coerente com a cena
+MAX_CORR_DIST = 0.08             # Distância máx. para correspondências (~3 x VOXEL_SIZE)
+ICP_METHOD = "point_to_plane"    # "point_to_plane" ou "point_to_point"
+MAX_ITERS = 100                  # Iterações máximas do ICP
+SHOW_VIEWER = True               # Mostrar janela 3D no final
 # ==========================
 
 
 def main():
+    # Diretório base do projeto (pasta onde está este ficheiro)
+    root = Path(__file__).resolve().parent
 
-    # Carregamento de Imagens e Filtragem de Profundidade
-    voxel_size = VOXEL_SIZE
 
-    # Upload files
-    # Point Cloud 1
-    filename_rgb1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/1.png'
-    rgb1 = o3d.io.read_image(filename_rgb1)
+    filename_rgb1   = root / "1.png"
+    filename_depth1 = root / "depth1.png"
+    filename_rgb2   = root / "2.png"
+    filename_depth2 = root / "depth2.png"
 
-    filename_depth1 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/1.png'
-    depth1 = o3d.io.read_image(filename_depth1)
 
-    # Point Cloud 2
-    filename_rgb2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/rgb/2.png'
-    rgb2 = o3d.io.read_image(filename_rgb2)
+    # Caminhos relativos para as imagens TUM
+    #rgb_dir = root / "tum_dataset" / "rgb"
+    #depth_dir = root / "tum_dataset" / "depth"
 
-    filename_depth2 = '/home/menicio/savi_25-26/Parte08/tum_dataset/depth/2.png'
-    depth2 = o3d.io.read_image(filename_depth2)
+    #filename_rgb1 = rgb_dir / "1.png"
+    #filename_depth1 = depth_dir / "1.png"
+    #filename_rgb2 = rgb_dir / "2.png"
+    #filename_depth2 = depth_dir / "2.png"
 
-    # Convert do RGB-D
-    rgbd1 = o3d.geometry.RGBDImage.create_from_tum_format(rgb1, depth1)
-    rgbd2 = o3d.geometry.RGBDImage.create_from_tum_format(rgb2, depth2)
-
-    # Criar pointclouds
+    # -----------------------------
+    # Intrínsecos da câmara
+    # -----------------------------
     intr = o3d.camera.PinholeCameraIntrinsic(
-        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault)
-    
-    pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd1, intr)
-    pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd2, intr)
+        o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault
+    )
+    # Alternativa TUM explícita (ex: fr1) se necessário:
+    # width  = np.asarray(o3d.io.read_image(str(filename_rgb1))).shape[1]
+    # height = np.asarray(o3d.io.read_image(str(filename_rgb1))).shape[0]
+    # intr = o3d.camera.PinholeCameraIntrinsic(width, height, 517.3, 516.5, 318.6, 255.3)
 
-    # Orientar (flip para ter Z para a frente)
-    # Open3D usa um sistema de coordenadas onde o eixo Z aponta para trás da câmera
-    #O Tum dataset assume que o eixo Z aponta para a frente
-
-    flip_T = [[1, 0, 0, 0],
-              [0, -1, 0, 0],
-              [0, 0, -1, 0],
-              [0, 0, 0, 1]]
-    
-    pcd1.transform(flip_T)
-    pcd2.transform(flip_T)
-
-    # Downsampling
-    # O downsample ajuda a acelerar o processo de ICP e reduz ruído através da média local
-
-    pcd1_ds = pcd1.voxel_down_sample(voxel_size=voxel_size)
-    pcd2_ds = pcd2.voxel_down_sample(voxel_size=voxel_size)
-
-    # Estimar normais
-    # O ICP precisa de normais para o método point-to-plane
-    pcd1_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
-    pcd2_ds.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
+    # -----------------------------
+    # Construção e preparação das point clouds
+    # (leitura RGB-D, criação de cloud, flip, voxel + normais)
+    # -----------------------------
+    pcd1_ds = load_and_prepare_cloud(filename_rgb1, filename_depth1, intr, VOXEL_SIZE)
+    pcd2_ds = load_and_prepare_cloud(filename_rgb2, filename_depth2, intr, VOXEL_SIZE)
 
     # ------------------------------------
     # Registo com ICP
@@ -86,10 +76,6 @@ def main():
     target = deepcopy(pcd2_ds)   # alvo
 
     # Método de estimação
-    # No método point-to-point é feita uma comparação direta entre pontos
-    # No método point-to-plane é feita uma comparação entre pplanos
-
-    # Permite a escolha entre métodos
     if ICP_METHOD.lower() == "point_to_plane":
         estimation = o3d.pipelines.registration.TransformationEstimationPointToPlane()
     elif ICP_METHOD.lower() == "point_to_point":
@@ -98,19 +84,31 @@ def main():
         raise ValueError('ICP_METHOD deve ser "point_to_plane" ou "point_to_point"')
 
     # Transformação inicial (identidade)
-    trans_init = np.identity(4)
+    trans_init = np.eye(4)
+
+    # Critério de convergência do ICP
+    criteria = o3d.pipelines.registration.ICPConvergenceCriteria(
+        max_iteration=MAX_ITERS,
+        relative_fitness=1e-6,
+        relative_rmse=1e-6
+    )
 
     # Executa o ICP
+    t0 = time.time()
     reg_icp = o3d.pipelines.registration.registration_icp(
         source, target,
         MAX_CORR_DIST,
         trans_init,
         estimation,
-        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=MAX_ITERS)
+        criteria
     )
+    t_icp = time.time() - t0
 
     print("\n=== Resultados do ICP ===")
-    print(f"method={ICP_METHOD}  mcd={MAX_CORR_DIST:.3f}  iters={MAX_ITERS}")
+    print(f"method = {ICP_METHOD}")
+    print(f"max_correspondence_distance = {MAX_CORR_DIST:.3f} m")
+    print(f"max_iterations = {MAX_ITERS}")
+    print(f"Tempo ICP: {t_icp:.3f} s")
     print("Fitness:", reg_icp.fitness)
     print("Inlier RMSE:", reg_icp.inlier_rmse)
     print("Transformação estimada:")
@@ -120,10 +118,18 @@ def main():
     source.transform(reg_icp.transformation)
 
     # Visualização (verde = alvo, vermelho = fonte alinhada)
-    source.paint_uniform_color([1, 0, 0])  # vermelho
-    target.paint_uniform_color([0, 1, 0])  # verde
-    o3d.visualization.draw_geometries([target, source])
+    if SHOW_VIEWER:
+        source.paint_uniform_color([1, 0, 0])  # vermelho
+        target.paint_uniform_color([0, 1, 0])  # verde
+        o3d.visualization.draw_geometries([target, source])
+
+    # Debugging
+    print("\n--- Debug ---")
+    print("Número de pontos em pcd1 downsampled:", np.asarray(pcd1_ds.points).shape[0])
+    print("Número de pontos em pcd2 downsampled:", np.asarray(pcd2_ds.points).shape[0])
+    print("pcd1_down normals computed:", len(pcd1_ds.normals))
 
 
 if __name__ == '__main__':
     main()
+
